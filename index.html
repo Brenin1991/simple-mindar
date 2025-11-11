@@ -42,6 +42,9 @@
       let textureCreated = false;
       let opencvReady = false;
       let mindarSystem = null;
+      let lastCaptureTime = 0;
+      let captureInterval = null;
+      const CAPTURE_UPDATE_INTERVAL = 2000; // Atualiza a textura a cada 2 segundos quando target está visível
 
       // Aguarda o carregamento da cena
       const scene = document.querySelector('#ar-scene');
@@ -594,8 +597,8 @@
       }
 
       // Aplica a textura no plano
-      function applyTextureToPlane(imageUrl) {
-        if (textureCreated) return; // Evita recriar múltiplas vezes
+      function applyTextureToPlane(imageUrl, forceUpdate = false) {
+        if (textureCreated && !forceUpdate) return; // Evita recriar múltiplas vezes, a menos que forceUpdate seja true
         
         const planeEl = drawingPlane;
         const mesh = planeEl.getObject3D('mesh');
@@ -633,7 +636,7 @@
           }
           
           textureCreated = true;
-          console.log('Textura aplicada com sucesso!');
+          console.log('✅ Textura aplicada com sucesso!');
         };
         img.onerror = (error) => {
           console.error('Erro ao carregar imagem:', error);
@@ -641,13 +644,46 @@
         img.src = imageUrl;
       }
 
+      // Atualiza a textura periodicamente para capturar o desenho pintado
+      function startContinuousCapture() {
+        if (captureInterval) {
+          clearInterval(captureInterval);
+        }
+        
+        captureInterval = setInterval(() => {
+          // Tenta capturar mesmo se o MindAR perdeu o target visualmente
+          // Usa a posição do plano AR como referência
+          const planeMesh = drawingPlane.getObject3D('mesh');
+          const targetVisible = targetEntity.getAttribute('visible');
+          
+          // Se o plano está visível (mesmo que o MindAR tenha perdido o target), continua capturando
+          if (planeMesh && (isTargetDetected || targetVisible !== false) && videoElement && videoElement.readyState >= 2) {
+            const now = Date.now();
+            // Só captura se passou o intervalo mínimo
+            if (now - lastCaptureTime >= CAPTURE_UPDATE_INTERVAL) {
+              console.log('🔄 Atualizando textura para capturar desenho pintado...');
+              lastCaptureTime = now;
+              captureTargetFrame(true); // forceUpdate = true
+            }
+          }
+        }, CAPTURE_UPDATE_INTERVAL);
+      }
+
+      function stopContinuousCapture() {
+        if (captureInterval) {
+          clearInterval(captureInterval);
+          captureInterval = null;
+        }
+      }
+
       // Captura frame quando target é detectado
-      function captureTargetFrame() {
+      function captureTargetFrame(forceUpdate = false) {
         console.log('Tentando capturar frame...', {
           videoElement: !!videoElement,
           canvas: !!canvas,
           ctx: !!ctx,
           textureCreated: textureCreated,
+          forceUpdate: forceUpdate,
           videoReady: videoElement && videoElement.readyState >= 2
         });
         
@@ -663,8 +699,9 @@
           return;
         }
         
-        if (textureCreated) {
-          console.log('Textura já foi criada');
+        // Se já criou a textura e não é uma atualização forçada, não captura novamente
+        if (textureCreated && !forceUpdate) {
+          console.log('Textura já foi criada (use forceUpdate=true para atualizar)');
           return;
         }
         
@@ -773,7 +810,7 @@
                       const processedUrl = processExtractedImage(img);
                       if (processedUrl) {
                         console.log('✅ Região do target extraída e processada!');
-                        applyTextureToPlane(processedUrl);
+                        applyTextureToPlane(processedUrl, forceUpdate);
                         return; // Sucesso!
                       }
                     };
@@ -795,7 +832,7 @@
                       const processedUrl = processExtractedImage(img);
                       if (processedUrl) {
                         console.log('✅ Região extraída via detecção automática!');
-                        applyTextureToPlane(processedUrl);
+                        applyTextureToPlane(processedUrl, forceUpdate);
                         return;
                       }
                     };
@@ -821,7 +858,7 @@
           
           if (imageUrl) {
             console.log('✅ Imagem processada com sucesso, aplicando textura...');
-            applyTextureToPlane(imageUrl);
+            applyTextureToPlane(imageUrl, forceUpdate);
           } else {
             console.error('❌ Falha ao processar imagem');
           }
@@ -849,13 +886,27 @@
         
         // Aguarda um pouco para garantir que a câmera está estável
         setTimeout(() => {
-          captureTargetFrame();
+          // Primeira captura (desenho original)
+          captureTargetFrame(false);
+          
+          // Inicia captura contínua para atualizar quando a criança pintar
+          startContinuousCapture();
         }, 300);
       });
 
       targetEntity.addEventListener('targetLost', () => {
-        isTargetDetected = false;
-        console.log('Target perdido');
+        console.log('⚠️ Target perdido pelo MindAR (pode ser porque foi pintado)');
+        // Não marca como perdido imediatamente - tenta manter o tracking
+        // O tracking contínuo vai tentar recapturar usando a posição do plano
+        
+        // Aguarda um pouco antes de parar completamente
+        setTimeout(() => {
+          // Se ainda não detectou novamente, para a captura
+          if (!isTargetDetected) {
+            console.log('Target realmente perdido, parando captura');
+            stopContinuousCapture();
+          }
+        }, 1000);
       });
 
       // Captura contínua enquanto target está visível (com mais tentativas)
