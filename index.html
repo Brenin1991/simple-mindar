@@ -44,6 +44,10 @@
       let mindarSystem = null;
       let lastCaptureTime = 0;
       let captureInterval = null;
+      let planeFixed = false; // Indica se o plano já foi fixado na cena
+      let fixedPosition = null; // Posição fixa do plano
+      let fixedRotation = null; // Rotação fixa do plano
+      let fixedScale = null; // Escala fixa do plano
       const CAPTURE_UPDATE_INTERVAL = 2000; // Atualiza a textura a cada 2 segundos quando target está visível
 
       // Aguarda o carregamento da cena
@@ -307,11 +311,17 @@
           // Atualiza a matriz do mundo
           drawingPlane.object3D.updateMatrixWorld();
           
-          // Verifica se o target está visível (mesmo que o plano esteja com opacity 0)
-          const targetVisible = targetEntity.getAttribute('visible');
-          if (targetVisible === false) {
-            console.warn('Target entity não está visível');
-            return null;
+          // Se o plano já está fixo, sempre retorna as coordenadas (não depende do tracking)
+          if (planeFixed) {
+            // Usa a posição fixa do plano
+            console.log('Usando posição fixa do plano para captura');
+          } else {
+            // Verifica se o target está visível (só quando ainda está usando tracking)
+            const targetVisible = targetEntity.getAttribute('visible');
+            if (targetVisible === false) {
+              console.warn('Target entity não está visível');
+              return null;
+            }
           }
           
           // Obtém a matriz de transformação do plano
@@ -651,6 +661,40 @@
         };
       }
 
+      // Fixa o plano na posição atual (desconecta do tracking)
+      function fixPlanePosition() {
+        if (planeFixed) return; // Já está fixo
+        
+        const planeEl = drawingPlane;
+        const planeObject3D = planeEl.object3D;
+        
+        // Salva a posição, rotação e escala atuais
+        planeObject3D.updateMatrixWorld();
+        fixedPosition = planeObject3D.position.clone();
+        fixedRotation = planeObject3D.rotation.clone();
+        fixedScale = planeObject3D.scale.clone();
+        
+        // Remove o plano do target entity e adiciona diretamente na cena
+        const targetEntity3D = targetEntity.object3D;
+        const scene3D = scene.object3D;
+        
+        // Remove do parent (target entity)
+        targetEntity3D.remove(planeObject3D);
+        
+        // Adiciona diretamente na cena
+        scene3D.add(planeObject3D);
+        
+        // Aplica a posição/rotação/escala fixas
+        planeObject3D.position.copy(fixedPosition);
+        planeObject3D.rotation.copy(fixedRotation);
+        planeObject3D.scale.copy(fixedScale);
+        
+        planeFixed = true;
+        console.log('📌 Plano fixado na cena! (não segue mais o tracking)');
+        console.log('Posição fixa:', fixedPosition);
+        console.log('Rotação fixa:', fixedRotation);
+      }
+
       // Aplica a textura no plano
       function applyTextureToPlane(imageUrl, forceUpdate = false) {
         if (textureCreated && !forceUpdate) return; // Evita recriar múltiplas vezes, a menos que forceUpdate seja true
@@ -662,6 +706,11 @@
           // Aguarda o mesh ser criado
           setTimeout(() => applyTextureToPlane(imageUrl, forceUpdate), 100);
           return;
+        }
+        
+        // Se é a primeira captura, fixa o plano na posição atual
+        if (!textureCreated && !planeFixed) {
+          fixPlanePosition();
         }
         
         // Cria uma imagem a partir da data URL
@@ -698,6 +747,9 @@
           mesh.material = material;
           mesh.material.needsUpdate = true;
           
+          // Torna o plano visível
+          planeEl.setAttribute('material', 'opacity', 1);
+          
           textureCreated = true;
           console.log('✅ Textura com shader aplicada com sucesso! (branco → alpha)');
         };
@@ -714,19 +766,30 @@
         }
         
         captureInterval = setInterval(() => {
-          // Tenta capturar mesmo se o MindAR perdeu o target visualmente
-          // Usa a posição do plano AR como referência
+          // Se o plano já está fixo, usa a posição fixa para capturar
+          // Se ainda não está fixo, usa o tracking
           const planeMesh = drawingPlane.getObject3D('mesh');
-          const targetVisible = targetEntity.getAttribute('visible');
           
-          // Se o plano está visível (mesmo que o MindAR tenha perdido o target), continua capturando
-          if (planeMesh && (isTargetDetected || targetVisible !== false) && videoElement && videoElement.readyState >= 2) {
-            const now = Date.now();
-            // Só captura se passou o intervalo mínimo
-            if (now - lastCaptureTime >= CAPTURE_UPDATE_INTERVAL) {
-              console.log('🔄 Atualizando textura para capturar desenho pintado...');
-              lastCaptureTime = now;
-              captureTargetFrame(true); // forceUpdate = true
+          if (planeFixed) {
+            // Plano já está fixo, captura usando a posição fixa
+            if (planeMesh && videoElement && videoElement.readyState >= 2) {
+              const now = Date.now();
+              if (now - lastCaptureTime >= CAPTURE_UPDATE_INTERVAL) {
+                console.log('🔄 Atualizando textura (plano fixo)...');
+                lastCaptureTime = now;
+                captureTargetFrame(true); // forceUpdate = true
+              }
+            }
+          } else {
+            // Ainda não fixou, usa o tracking
+            const targetVisible = targetEntity.getAttribute('visible');
+            if (planeMesh && (isTargetDetected || targetVisible !== false) && videoElement && videoElement.readyState >= 2) {
+              const now = Date.now();
+              if (now - lastCaptureTime >= CAPTURE_UPDATE_INTERVAL) {
+                console.log('🔄 Atualizando textura para capturar desenho pintado...');
+                lastCaptureTime = now;
+                captureTargetFrame(true); // forceUpdate = true
+              }
             }
           }
         }, CAPTURE_UPDATE_INTERVAL);
@@ -939,8 +1002,15 @@
           videoElement: !!videoElement,
           videoReady: videoElement ? videoElement.readyState : 'N/A',
           canvas: !!canvas,
-          textureCreated: textureCreated
+          textureCreated: textureCreated,
+          planeFixed: planeFixed
         });
+        
+        // Se o plano já está fixo, não precisa fazer nada (já foi capturado)
+        if (planeFixed) {
+          console.log('Plano já está fixo, ignorando detecção do target');
+          return;
+        }
         
         // Se o vídeo ainda não foi encontrado, tenta encontrar agora
         if (!videoElement) {
@@ -949,7 +1019,7 @@
         
         // Aguarda um pouco para garantir que a câmera está estável
         setTimeout(() => {
-          // Primeira captura (desenho original)
+          // Primeira captura (desenho original) - isso vai fixar o plano
           captureTargetFrame(false);
           
           // Inicia captura contínua para atualizar quando a criança pintar
