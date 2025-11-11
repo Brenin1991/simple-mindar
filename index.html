@@ -29,7 +29,7 @@
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
       <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
-        <a-plane id="drawing-plane" position="0 0 0" height="0.552" width="1" rotation="0 0 0" material="transparent: true; opacity: 0"></a-plane>
+        <a-plane id="drawing-plane" position="0 0 0" height="1" width="1" rotation="0 0 0" material="transparent: true; opacity: 0"></a-plane>
         <a-gltf-model rotation="0 0 0 " position="0 0 0.1" scale="0.005 0.005 0.005" src="#avatarModel" animation="property: position; to: 0 0.1 0.1; dur: 1000; easing: easeInOutQuad; loop: true; dir: alternate">
       </a-entity>
     </a-scene>
@@ -317,9 +317,9 @@
           planeMesh.updateMatrixWorld();
           worldMatrix.copy(planeMesh.matrixWorld);
           
-          // Dimensões do plano (ajuste conforme necessário)
+          // Dimensões do plano (quadrado)
           const planeWidth = 1.0;  // Largura do plano em metros
-          const planeHeight = 0.552; // Altura do plano em metros
+          const planeHeight = 1.0; // Altura do plano em metros (quadrado)
           const halfWidth = planeWidth / 2;
           const halfHeight = planeHeight / 2;
           
@@ -618,7 +618,7 @@
         img.onload = () => {
           // Cria textura a partir da imagem
           const texture = new THREE.Texture(img);
-          texture.flipY = false; // Importante para AR
+          texture.flipY = true; // Corrige a inversão vertical
           texture.needsUpdate = true;
           
           if (mesh.material) {
