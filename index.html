@@ -562,38 +562,93 @@
           return null;
         }
         
-        // Mantém as cores originais, apenas aplica ajustes leves se necessário
-        // Se quiser melhorar contraste/brilho, descomente as linhas abaixo:
-        
-        // Aplica ajustes leves de contraste e brilho (opcional)
-        ctx.filter = 'contrast(1.1) brightness(1.05)';
-        ctx.drawImage(canvas, 0, 0);
-        ctx.filter = 'none';
-        
-        // Se quiser processar pixel a pixel para melhorar qualidade:
-        /*
+        // Processa a imagem para transformar branco em alpha
         const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageDataObj.data;
-
-        // Ajusta contraste e brilho mantendo as cores
+        
+        // Threshold para considerar um pixel como "branco" (ajustável)
+        const whiteThreshold = 240; // Pixels acima disso serão considerados brancos
+        const alphaThreshold = 0.1; // Alpha mínimo para pixels escuros
+        
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
           
-          // Aumenta contraste levemente mantendo as cores
-          const contrast = 1.1;
-          const brightness = 1.05;
+          // Calcula o brilho do pixel
+          const brightness = (r + g + b) / 3;
           
-          data[i] = Math.min(255, Math.max(0, (r - 128) * contrast + 128) * brightness);
-          data[i + 1] = Math.min(255, Math.max(0, (g - 128) * contrast + 128) * brightness);
-          data[i + 2] = Math.min(255, Math.max(0, (b - 128) * contrast + 128) * brightness);
+          // Se o pixel é branco (ou muito claro), torna transparente
+          if (brightness >= whiteThreshold) {
+            data[i + 3] = 0; // Alpha = 0 (transparente)
+          } else {
+            // Para pixels escuros, mantém visível
+            // Calcula alpha baseado na escuridão (quanto mais escuro, mais opaco)
+            const darkness = 1 - (brightness / 255);
+            data[i + 3] = Math.max(alphaThreshold * 255, darkness * 255);
+            
+            // Opcional: escurece ainda mais as linhas pretas para melhor contraste
+            if (brightness < 128) {
+              data[i] = Math.max(0, r * 0.8);     // Escurece R
+              data[i + 1] = Math.max(0, g * 0.8); // Escurece G
+              data[i + 2] = Math.max(0, b * 0.8); // Escurece B
+            }
+          }
         }
-
+        
+        // Aplica o processamento de volta ao canvas
         ctx.putImageData(imageDataObj, 0, 0);
-        */
         
         return canvas.toDataURL('image/png');
+      }
+
+      // Cria shader customizado que transforma branco em alpha
+      function createWhiteToAlphaShader() {
+        return {
+          uniforms: {
+            texture: { value: null },
+            whiteThreshold: { value: 0.94 }, // 240/255 ≈ 0.94
+            alphaThreshold: { value: 0.1 }
+          },
+          vertexShader: `
+            varying vec2 vUv;
+            void main() {
+              vUv = uv;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform sampler2D texture;
+            uniform float whiteThreshold;
+            uniform float alphaThreshold;
+            varying vec2 vUv;
+            
+            void main() {
+              vec4 texColor = texture2D(texture, vUv);
+              
+              // Calcula o brilho do pixel
+              float brightness = (texColor.r + texColor.g + texColor.b) / 3.0;
+              
+              // Se o pixel é branco (ou muito claro), torna transparente
+              if (brightness >= whiteThreshold) {
+                gl_FragColor = vec4(texColor.rgb, 0.0); // Alpha = 0
+              } else {
+                // Para pixels escuros, mantém visível
+                // Calcula alpha baseado na escuridão
+                float darkness = 1.0 - brightness;
+                float alpha = max(alphaThreshold, darkness);
+                
+                // Escurece linhas pretas para melhor contraste
+                vec3 color = texColor.rgb;
+                if (brightness < 0.5) {
+                  color = color * 0.8;
+                }
+                
+                gl_FragColor = vec4(color, alpha);
+              }
+            }
+          `
+        };
       }
 
       // Aplica a textura no plano
@@ -605,7 +660,7 @@
         
         if (!mesh) {
           // Aguarda o mesh ser criado
-          setTimeout(() => applyTextureToPlane(imageUrl), 100);
+          setTimeout(() => applyTextureToPlane(imageUrl, forceUpdate), 100);
           return;
         }
         
@@ -617,26 +672,34 @@
           texture.flipY = true; // Corrige a inversão vertical
           texture.needsUpdate = true;
           
+          // Cria o shader customizado
+          const shaderMaterial = createWhiteToAlphaShader();
+          shaderMaterial.uniforms.texture.value = texture;
+          
+          // Cria material com shader customizado
+          const material = new THREE.ShaderMaterial({
+            uniforms: shaderMaterial.uniforms,
+            vertexShader: shaderMaterial.vertexShader,
+            fragmentShader: shaderMaterial.fragmentShader,
+            transparent: true,
+            side: THREE.DoubleSide
+          });
+          
           if (mesh.material) {
-            // Se já existe material, atualiza
+            // Se já existe material, descarta o antigo
             if (mesh.material.map) {
               mesh.material.map.dispose();
             }
-            mesh.material.map = texture;
-            mesh.material.needsUpdate = true;
-            mesh.material.transparent = true;
-            mesh.material.opacity = 1;
-          } else {
-            // Cria novo material
-            mesh.material = new THREE.MeshBasicMaterial({
-              map: texture,
-              transparent: true,
-              opacity: 1
-            });
+            if (mesh.material.dispose) {
+              mesh.material.dispose();
+            }
           }
           
+          mesh.material = material;
+          mesh.material.needsUpdate = true;
+          
           textureCreated = true;
-          console.log('✅ Textura aplicada com sucesso!');
+          console.log('✅ Textura com shader aplicada com sucesso! (branco → alpha)');
         };
         img.onerror = (error) => {
           console.error('Erro ao carregar imagem:', error);
