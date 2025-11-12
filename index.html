@@ -49,7 +49,10 @@
       let fixedRotation = null; // Rotação fixa do plano
       let fixedScale = null; // Escala fixa do plano
       let continuousCaptureEnabled = false; // Controla se deve continuar capturando
+      let particlesCreated = false; // Indica se as partículas já foram criadas
+      let particles = []; // Array para armazenar as partículas
       const CAPTURE_UPDATE_INTERVAL = 5000; // Atualiza a textura a cada 5 segundos (aumentado de 2s)
+      const PARTICLE_COUNT = 20; // Número de partículas a criar
 
       // Aguarda o carregamento da cena
       const scene = document.querySelector('#ar-scene');
@@ -766,11 +769,124 @@
           
           textureCreated = true;
           console.log('✅ Textura com shader WebGL aplicada! (branco → alpha)');
+          
+          // Cria partículas flutuantes após a textura ser criada
+          if (!particlesCreated) {
+            createFloatingParticles(texture, material);
+          }
         };
         img.onerror = (error) => {
           console.error('Erro ao carregar imagem:', error);
         };
         img.src = imageUrl;
+      }
+
+      // Cria partículas flutuantes com a textura
+      function createFloatingParticles(texture, materialTemplate) {
+        if (particlesCreated) return;
+        
+        console.log('✨ Criando partículas flutuantes...');
+        
+        const scene3D = scene.object3D;
+        const camera = scene.camera;
+        
+        // Cria o shader template uma vez
+        const shaderTemplate = createWhiteToAlphaShader();
+        shaderTemplate.uniforms.tDiffuse.value = texture;
+        
+        // Cria partículas com a mesma textura
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          // Cria um novo material baseado no template
+          // Cada partícula precisa de seu próprio material, mas compartilha a textura
+          const particleMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+              tDiffuse: { value: texture }, // Compartilha a mesma textura
+              whiteThreshold: { value: shaderTemplate.uniforms.whiteThreshold.value },
+              alphaThreshold: { value: shaderTemplate.uniforms.alphaThreshold.value },
+              colorDiffThreshold: { value: shaderTemplate.uniforms.colorDiffThreshold.value }
+            },
+            vertexShader: shaderTemplate.vertexShader,
+            fragmentShader: shaderTemplate.fragmentShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+          });
+          
+          // Cria o plano da partícula
+          const particleGeometry = new THREE.PlaneGeometry(0.3, 0.3); // Tamanho menor que o plano principal
+          const particleMesh = new THREE.Mesh(particleGeometry, particleMaterial);
+          
+          // Posição aleatória em uma esfera ao redor da câmera
+          const radius = 2 + Math.random() * 3; // Entre 2 e 5 metros
+          const theta = Math.random() * Math.PI * 2; // Ângulo horizontal
+          const phi = Math.acos((Math.random() * 2) - 1); // Ângulo vertical
+          
+          particleMesh.position.set(
+            radius * Math.sin(phi) * Math.cos(theta),
+            radius * Math.sin(phi) * Math.sin(theta),
+            radius * Math.cos(phi)
+          );
+          
+          // Adiciona offset aleatório
+          particleMesh.position.x += (Math.random() - 0.5) * 2;
+          particleMesh.position.y += (Math.random() - 0.5) * 2;
+          particleMesh.position.z += (Math.random() - 0.5) * 2;
+          
+          // Velocidade e offset para animação de flutuação
+          const particle = {
+            mesh: particleMesh,
+            baseY: particleMesh.position.y,
+            floatSpeed: 0.5 + Math.random() * 0.5, // Velocidade de flutuação
+            floatAmount: 0.2 + Math.random() * 0.3, // Amplitude de flutuação
+            rotationSpeed: (Math.random() - 0.5) * 0.02, // Rotação lenta
+            timeOffset: Math.random() * Math.PI * 2 // Offset de tempo para variar animação
+          };
+          
+          particles.push(particle);
+          scene3D.add(particleMesh);
+        }
+        
+        particlesCreated = true;
+        console.log(`✅ ${PARTICLE_COUNT} partículas criadas!`);
+        
+        // Inicia animação das partículas
+        animateParticles();
+      }
+
+      // Anima as partículas flutuantes
+      function animateParticles() {
+        if (particles.length === 0) return;
+        
+        const camera = scene.camera;
+        let lastTime = Date.now();
+        
+        // Usa o loop de render do A-Frame
+        function updateParticles() {
+          if (particles.length === 0) return;
+          
+          const currentTime = Date.now();
+          const deltaTime = (currentTime - lastTime) * 0.001; // Delta em segundos
+          lastTime = currentTime;
+          const time = currentTime * 0.001; // Tempo total em segundos
+          
+          particles.forEach((particle) => {
+            const mesh = particle.mesh;
+            
+            // Flutuação vertical
+            mesh.position.y = particle.baseY + Math.sin(time * particle.floatSpeed + particle.timeOffset) * particle.floatAmount;
+            
+            // Rotação lenta
+            mesh.rotation.z += particle.rotationSpeed * deltaTime * 60;
+            
+            // Sempre olha para a câmera (billboard)
+            if (camera && camera.position) {
+              mesh.lookAt(camera.position);
+            }
+          });
+        }
+        
+        // Registra no loop de render do A-Frame
+        scene.addEventListener('render', updateParticles);
       }
 
       // Atualiza a textura periodicamente para capturar o desenho pintado
