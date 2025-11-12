@@ -50,6 +50,7 @@
       let continuousCaptureEnabled = false; // Controla se deve continuar capturando
       let particlesCreated = false; // Indica se as partículas já foram criadas
       let particles = []; // Array para armazenar as partículas
+      let particleUpdateLoop = null; // Loop de atualização das partículas
       const CAPTURE_UPDATE_INTERVAL = 5000; // Atualiza a textura a cada 5 segundos (aumentado de 2s)
       const PARTICLE_COUNT = 15; // Número de partículas a criar
 
@@ -812,7 +813,8 @@
             transparent: true,
             opacity: 1
           });
-          particleEl.setAttribute('look-at', '0 0 0'); // Olha para a câmera
+          // Não usa look-at do A-Frame para evitar distorção
+          // Vamos fazer isso manualmente via THREE.js
           
           // Animação de flutuação
           const floatHeight = 0.3 + Math.random() * 0.3;
@@ -826,7 +828,7 @@
             dir: 'alternate'
           });
           
-          // Rotação suave
+          // Rotação suave (apenas em Z para não distorcer)
           particleEl.setAttribute('animation__rotation', {
             property: 'rotation',
             to: `0 0 ${360}`,
@@ -841,6 +843,9 @@
           setTimeout(() => {
             const mesh = particleEl.getObject3D('mesh');
             if (mesh) {
+              // Garante que a escala está fixa para evitar distorção
+              mesh.scale.set(1, 1, 1);
+              
               // Cria material com shader usando a mesma textura
               const particleMaterial = new THREE.ShaderMaterial({
                 uniforms: {
@@ -863,19 +868,63 @@
               mesh.material = particleMaterial;
               mesh.material.needsUpdate = true;
               
+              // Armazena referência do mesh
+              particles.push({
+                el: particleEl,
+                mesh: mesh,
+                baseY: y,
+                baseZ: z
+              });
+              
               console.log(`✅ Partícula ${i} criada com shader`);
             }
           }, 100 + i * 50); // Delay escalonado para melhor performance
-          
-          particles.push({
-            el: particleEl,
-            baseY: y,
-            baseZ: z
-          });
         }
         
         particlesCreated = true;
         console.log(`✅ ${PARTICLE_COUNT} partículas flutuantes criadas!`);
+        
+        // Inicia loop de atualização para fazer partículas olharem para a câmera
+        startParticleUpdateLoop();
+      }
+
+      // Loop de atualização para fazer partículas olharem para a câmera (sem distorcer)
+      function startParticleUpdateLoop() {
+        if (particleUpdateLoop) return; // Já está rodando
+        
+        const updateParticles = () => {
+          const camera = scene.camera;
+          if (!camera) {
+            particleUpdateLoop = requestAnimationFrame(updateParticles);
+            return;
+          }
+          
+          // Obtém a posição da câmera no mundo
+          const cameraWorldPos = new THREE.Vector3();
+          camera.getWorldPosition(cameraWorldPos);
+          
+          // Atualiza cada partícula
+          particles.forEach((particle) => {
+            if (!particle.mesh || !particle.mesh.parent) return;
+            
+            // Obtém a rotação Z atual da animação
+            const currentRotZ = particle.el.getAttribute('rotation').z || 0;
+            
+            // Usa lookAt do THREE.js para olhar para a câmera
+            particle.mesh.lookAt(cameraWorldPos);
+            
+            // Garante que a escala está sempre fixa (1, 1, 1) - evita esticamento
+            particle.mesh.scale.set(1, 1, 1);
+            
+            // Preserva a rotação Z da animação
+            particle.mesh.rotation.z = currentRotZ;
+          });
+          
+          particleUpdateLoop = requestAnimationFrame(updateParticles);
+        };
+        
+        updateParticles();
+        console.log('🔄 Loop de atualização de partículas iniciado');
       }
 
       // Atualiza a textura periodicamente para capturar o desenho pintado
