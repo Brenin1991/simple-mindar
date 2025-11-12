@@ -792,10 +792,16 @@
         if (particlesCreated) return;
         
         console.log('✨ Criando partículas flutuantes...');
-        console.log('Textura:', texture);
-        console.log('Material template:', materialTemplate);
+        console.log('Textura recebida:', texture);
+        console.log('Textura image:', texture && texture.image ? `${texture.image.width}x${texture.image.height}` : 'N/A');
         
-        // Converte a textura para data URL para usar em entidades A-Frame
+        // Garante que a textura está atualizada
+        if (texture && texture.image) {
+          texture.needsUpdate = true;
+          texture.flipY = true;
+        }
+        
+        // Converte a textura para data URL para usar em entidades A-Frame (apenas para visualização inicial)
         const canvas = document.createElement('canvas');
         canvas.width = texture.image.width || 512;
         canvas.height = texture.image.height || 512;
@@ -803,12 +809,15 @@
         ctx.drawImage(texture.image, 0, 0);
         const textureDataUrl = canvas.toDataURL('image/png');
         
-        // Adiciona a textura aos assets do A-Frame
+        // Adiciona a textura aos assets do A-Frame (para visualização inicial)
         const assets = scene.querySelector('a-assets');
-        const textureImg = document.createElement('img');
-        textureImg.id = 'particle-texture';
+        let textureImg = document.getElementById('particle-texture');
+        if (!textureImg) {
+          textureImg = document.createElement('img');
+          textureImg.id = 'particle-texture';
+          assets.appendChild(textureImg);
+        }
         textureImg.src = textureDataUrl;
-        assets.appendChild(textureImg);
         
         // Aguarda o asset carregar
         textureImg.onload = () => {
@@ -859,28 +868,58 @@
           particlesCreated = true;
           console.log(`✅ ${PARTICLE_COUNT} partículas criadas como entidades A-Frame!`);
           
-          // Aplica o shader customizado depois
+          // Aplica o shader customizado imediatamente e depois de um delay
+          // Isso garante que funcione mesmo se o A-Frame ainda estiver criando os meshes
+          applyShaderToParticles(texture);
           setTimeout(() => {
             applyShaderToParticles(texture);
-          }, 1000);
+          }, 500);
+          setTimeout(() => {
+            applyShaderToParticles(texture);
+          }, 1500);
         };
       }
 
       // Aplica o shader customizado às partículas
       function applyShaderToParticles(texture) {
         console.log('Aplicando shader customizado às partículas...');
+        console.log('Textura recebida:', texture);
         
         const shaderTemplate = createWhiteToAlphaShader();
-        shaderTemplate.uniforms.tDiffuse.value = texture;
+        
+        // Garante que a textura está atualizada
+        if (texture && texture.image) {
+          texture.needsUpdate = true;
+          texture.flipY = true;
+        }
         
         particles.forEach((particle, i) => {
           const el = particle.el;
-          const mesh = el.getObject3D('mesh');
           
-          if (mesh) {
+          // Aguarda o mesh ser criado pelo A-Frame
+          const applyShader = () => {
+            const mesh = el.getObject3D('mesh');
+            
+            if (!mesh) {
+              // Se o mesh ainda não existe, tenta novamente
+              setTimeout(applyShader, 100);
+              return;
+            }
+            
+            // Remove o material antigo se existir
+            if (mesh.material) {
+              if (mesh.material.map) {
+                mesh.material.map.dispose();
+              }
+              if (mesh.material.dispose) {
+                mesh.material.dispose();
+              }
+            }
+            
+            // Cria o shader material com a textura correta
             const particleMaterial = new THREE.ShaderMaterial({
               uniforms: {
-                tDiffuse: { value: texture },
+                tDiffuse: { value: texture }, // Usa a mesma textura do plano principal
                 whiteThreshold: { value: shaderTemplate.uniforms.whiteThreshold.value },
                 alphaThreshold: { value: shaderTemplate.uniforms.alphaThreshold.value },
                 colorDiffThreshold: { value: shaderTemplate.uniforms.colorDiffThreshold.value }
@@ -892,10 +931,26 @@
               depthWrite: false
             });
             
+            // Aplica o material
             mesh.material = particleMaterial;
             mesh.material.needsUpdate = true;
-            console.log(`Shader aplicado à partícula ${i}`);
-          }
+            
+            // Força atualização da textura
+            if (texture) {
+              texture.needsUpdate = true;
+            }
+            
+            console.log(`✅ Shader aplicado à partícula ${i}`, {
+              hasTexture: !!texture,
+              textureSize: texture && texture.image ? `${texture.image.width}x${texture.image.height}` : 'N/A'
+            });
+          };
+          
+          // Tenta aplicar imediatamente
+          applyShader();
+          
+          // Também tenta após um pequeno delay para garantir
+          setTimeout(applyShader, 200);
         });
       }
 
