@@ -773,6 +773,12 @@
           // Cria partículas flutuantes após a textura ser criada
           if (!particlesCreated) {
             createFloatingParticles(texture, material);
+            
+            // Torna o plano principal invisível (remove do centro)
+            setTimeout(() => {
+              planeEl.setAttribute('visible', false);
+              console.log('📌 Plano principal removido do centro (apenas partículas visíveis)');
+            }, 500); // Aguarda um pouco para garantir que as partículas foram criadas
           }
         };
         img.onerror = (error) => {
