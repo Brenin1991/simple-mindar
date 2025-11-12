@@ -745,6 +745,35 @@
         };
       }
 
+      // Centraliza o plano na tela (em frente à câmera)
+      function centerPlaneInScreen() {
+        const planeEl = drawingPlane;
+        const planeObject3D = planeEl.object3D;
+        const scene3D = scene.object3D;
+        
+        // Se o plano ainda não foi removido do target entity, remove agora
+        if (planeObject3D.parent !== scene3D) {
+          const targetEntity3D = targetEntity.object3D;
+          targetEntity3D.remove(planeObject3D);
+          scene3D.add(planeObject3D);
+        }
+        
+        // Posiciona o plano no centro da tela (em frente à câmera)
+        // A câmera está em (0, 0, 0), então posiciona em (0, 0, -2) para ficar em frente
+        planeObject3D.position.set(0, 0, -2);
+        planeObject3D.rotation.set(0, 0, 0); // Sem rotação, olhando para a câmera
+        planeObject3D.scale.set(1, 1, 1); // Mantém escala original
+        
+        // Atualiza a matriz
+        planeObject3D.updateMatrixWorld();
+        
+        // Garante que o plano está visível
+        planeEl.setAttribute('visible', true);
+        planeEl.setAttribute('material', 'opacity', 1);
+        
+        console.log('📌 Plano centralizado na tela em:', planeObject3D.position);
+      }
+
       // Fixa o plano na posição atual (desconecta do tracking)
       function fixPlanePosition() {
         if (planeFixed) return; // Já está fixo
@@ -867,13 +896,10 @@
           // Cria partículas flutuantes após a textura ser criada
           if (!particlesCreated) {
             createFloatingParticles(texture, material);
-            
-            // Torna o plano principal invisível (remove do centro)
-            setTimeout(() => {
-              planeEl.setAttribute('visible', false);
-              console.log('📌 Plano principal removido do centro (apenas partículas visíveis)');
-            }, 500); // Aguarda um pouco para garantir que as partículas foram criadas
           }
+          
+          // Posiciona o plano no centro da tela (em frente à câmera)
+          centerPlaneInScreen();
         };
         img.onerror = (error) => {
           console.error('Erro ao carregar imagem:', error);
