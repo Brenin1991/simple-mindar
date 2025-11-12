@@ -819,7 +819,7 @@
             // Posição aleatória mais espalhada e mais longe da câmera (melhor FPS)
             const x = (Math.random() - 0.5) * 8; // -4 a 4 (mais espalhado horizontalmente)
             const y = (Math.random() - 0.5) * 6; // -3 a 3 (mais espalhado verticalmente)
-            const z =(Math.random() - 0.5) * 10; // -5 a -10 (mais longe da câmera para melhor FPS)
+            const z = -10; // -5 a -10 (mais longe da câmera para melhor FPS)
             
             // Cria entidade A-Frame
             const particleEl = document.createElement('a-plane');
