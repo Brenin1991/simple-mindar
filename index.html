@@ -609,8 +609,8 @@
             varying vec2 vUv;
             
             void main() {
-              // Ajusta UV para mover textura para cima (adiciona ao Y)
-              vec2 adjustedUv = vec2(vUv.x, clamp(vUv.y + 0.1, 0.0, 1.0));
+              // Ajusta UV para mover textura para cima (subtrai do Y porque Y=0 é embaixo)
+              vec2 adjustedUv = vec2(vUv.x, clamp(vUv.y - 0.1, 0.0, 1.0));
               vec4 texColor = texture2D(tDiffuse, adjustedUv);
               
               // Calcula o brilho do pixel
@@ -731,7 +731,7 @@
           // Cria textura a partir da imagem
           const texture = new THREE.Texture(img);
           texture.flipY = true; // Corrige a inversão vertical
-          texture.offset.y = 0.1; // Move a textura para cima no mapeamento UV
+          texture.offset.y = -0.1; // Move a textura para cima no mapeamento UV (negativo move para cima)
           texture.needsUpdate = true;
           
           // Verifica se a textura está pronta
