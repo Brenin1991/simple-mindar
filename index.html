@@ -770,72 +770,15 @@
           textureCreated = true;
           console.log('✅ Textura com shader WebGL aplicada! (branco → alpha)');
           
-          // TESTE: Cria um plano simples na frente da câmera
+          // Cria partículas flutuantes após a textura ser criada
           if (!particlesCreated) {
-            console.log('🔧 Criando plano de teste na frente da câmera...');
+            createFloatingParticles(texture, material);
             
-            // Converte textura para data URL
-            const canvas = document.createElement('canvas');
-            canvas.width = texture.image.width || 512;
-            canvas.height = texture.image.height || 512;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(texture.image, 0, 0);
-            const textureDataUrl = canvas.toDataURL('image/png');
-            
-            // Adiciona aos assets
-            const assets = scene.querySelector('a-assets');
-            let testTextureImg = document.getElementById('test-texture');
-            if (!testTextureImg) {
-              testTextureImg = document.createElement('img');
-              testTextureImg.id = 'test-texture';
-              assets.appendChild(testTextureImg);
-            }
-            testTextureImg.src = textureDataUrl;
-            
-            testTextureImg.onload = () => {
-              // Cria plano simples diretamente na cena (espaço mundial A-Frame)
-              const testPlane = document.createElement('a-plane');
-              testPlane.setAttribute('id', 'test-plane');
-              testPlane.setAttribute('width', '2');
-              testPlane.setAttribute('height', '2');
-              testPlane.setAttribute('position', '0 0 -10'); // 3 metros à frente no espaço mundial
-              testPlane.setAttribute('material', {
-                src: '#test-texture',
-                transparent: true,
-                opacity: 1
-              });
-              testPlane.setAttribute('rotation', '0 0 0');
-              
-              // Adiciona diretamente na cena (espaço mundial)
-              scene.appendChild(testPlane);
-              console.log('✅ Plano de teste criado na cena (espaço mundial A-Frame)!');
-              
-              // Depois aplica o shader
-              setTimeout(() => {
-                const mesh = testPlane.getObject3D('mesh');
-                if (mesh) {
-                  const shaderTemplate = createWhiteToAlphaShader();
-                  const shaderMaterial = new THREE.ShaderMaterial({
-                    uniforms: {
-                      tDiffuse: { value: texture },
-                      whiteThreshold: { value: shaderTemplate.uniforms.whiteThreshold.value },
-                      alphaThreshold: { value: shaderTemplate.uniforms.alphaThreshold.value },
-                      colorDiffThreshold: { value: shaderTemplate.uniforms.colorDiffThreshold.value }
-                    },
-                    vertexShader: shaderTemplate.vertexShader,
-                    fragmentShader: shaderTemplate.fragmentShader,
-                    transparent: true,
-                    side: THREE.DoubleSide,
-                    depthWrite: false
-                  });
-                  mesh.material = shaderMaterial;
-                  mesh.material.needsUpdate = true;
-                  console.log('✅ Shader aplicado ao plano de teste!');
-                }
-              }, 500);
-            };
-            
-            particlesCreated = true; // Marca como criado para não repetir
+            // Torna o plano principal invisível (remove do centro)
+            setTimeout(() => {
+              planeEl.setAttribute('visible', false);
+              console.log('📌 Plano principal removido do centro (apenas partículas visíveis)');
+            }, 500); // Aguarda um pouco para garantir que as partículas foram criadas
           }
         };
         img.onerror = (error) => {
@@ -876,7 +819,7 @@
             // Posição aleatória mais espalhada e mais longe da câmera (melhor FPS)
             const x = (Math.random() - 0.5) * 8; // -4 a 4 (mais espalhado horizontalmente)
             const y = (Math.random() - 0.5) * 6; // -3 a 3 (mais espalhado verticalmente)
-            const z = -5 - Math.random() * 5; // -5 a -10 (mais longe da câmera para melhor FPS)
+            const z = -10; // -5 a -10 (mais longe da câmera para melhor FPS)
             
             // Cria entidade A-Frame
             const particleEl = document.createElement('a-plane');
