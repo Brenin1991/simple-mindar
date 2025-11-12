@@ -793,21 +793,22 @@
             testTextureImg.src = textureDataUrl;
             
             testTextureImg.onload = () => {
-              // Cria plano simples na frente da câmera
+              // Cria plano simples diretamente na cena (espaço mundial A-Frame)
               const testPlane = document.createElement('a-plane');
               testPlane.setAttribute('id', 'test-plane');
               testPlane.setAttribute('width', '2');
               testPlane.setAttribute('height', '2');
-              testPlane.setAttribute('position', '0 0 -3'); // 3 metros à frente
+              testPlane.setAttribute('position', '0 0 -3'); // 3 metros à frente no espaço mundial
               testPlane.setAttribute('material', {
                 src: '#test-texture',
                 transparent: true,
                 opacity: 1
               });
-              testPlane.setAttribute('look-at', '0 0 0'); // Olha para câmera
+              testPlane.setAttribute('rotation', '0 0 0');
               
+              // Adiciona diretamente na cena (espaço mundial)
               scene.appendChild(testPlane);
-              console.log('✅ Plano de teste criado na frente da câmera!');
+              console.log('✅ Plano de teste criado na cena (espaço mundial A-Frame)!');
               
               // Depois aplica o shader
               setTimeout(() => {
