@@ -797,10 +797,10 @@
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           // Posição aleatória espalhada ao redor da câmera
           const angle = (i / PARTICLE_COUNT) * Math.PI * 2; // Distribui em círculo
-          const radius = 3 + Math.random() * 2; // Distância da câmera
+          const radius = 6 + Math.random() * 5; // Distância da câmera
           const x = Math.cos(angle) * radius;
           const y = (Math.random() - 0.5) * 4; // Altura variada
-          const z = -5 - Math.random() * 3; // Profundidade variada
+          const z = -10 - Math.random() * 10; // Profundidade variada
           
           // Cria entidade A-Frame para a partícula
           const particleEl = document.createElement('a-plane');
