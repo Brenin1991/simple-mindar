@@ -587,9 +587,9 @@
         return {
           uniforms: {
             tDiffuse: { value: null },
-            whiteThreshold: { value: 0.90 }, // Threshold para brilho (ajustado para ser mais permissivo)
+            whiteThreshold: { value: 0.75 }, // Threshold mais baixo para pegar mais brancos
             alphaThreshold: { value: 0.1 },
-            colorDiffThreshold: { value: 0.1 } // Diferença máxima entre canais para considerar branco
+            colorDiffThreshold: { value: 0.25 } // Diferença maior para pegar mais variações de branco/cinza
           },
           vertexShader: `
             varying vec2 vUv;
@@ -611,34 +611,34 @@
               // Calcula o brilho do pixel
               float brightness = (texColor.r + texColor.g + texColor.b) / 3.0;
               
-              // Verifica se é branco puro (todos os canais altos e similares)
+              // Verifica se é branco/cinza claro (todos os canais altos e similares)
               // Cores pintadas terão diferença entre os canais RGB
               float maxChannel = max(max(texColor.r, texColor.g), texColor.b);
               float minChannel = min(min(texColor.r, texColor.g), texColor.b);
               float channelDiff = maxChannel - minChannel;
               
-              // É branco se: brilho alto E canais similares (diferença pequena)
-              // Isso preserva cores pintadas mesmo que sejam claras
-              // Cores pintadas terão diferença maior entre canais
-              bool isWhite = (brightness >= whiteThreshold) && (channelDiff < colorDiffThreshold);
+              // Verifica se é branco/cinza claro: brilho alto E canais similares
+              bool isWhiteOrLightGray = (brightness >= whiteThreshold) && (channelDiff < colorDiffThreshold);
+              
+              // Verifica se é uma cor pintada (tem diferença significativa entre canais)
+              bool isColored = channelDiff > 0.15;
               
               float finalAlpha = 0.0;
               vec3 finalColor = texColor.rgb;
               
-              if (isWhite) {
-                // Branco puro = transparente (cutoff)
+              if (isWhiteOrLightGray && !isColored) {
+                // Branco/cinza claro = transparente (cutoff mais agressivo)
                 finalAlpha = 0.0;
+              } else if (isColored) {
+                // Cores pintadas = totalmente opaco (mesmo que sejam claras)
+                finalAlpha = 1.0;
               } else {
-                // Cores pintadas ou linhas pretas = visível
-                // Para linhas pretas, usa alpha baseado na escuridão
+                // Linhas pretas/escuras = visível com alpha baseado na escuridão
+                float darkness = 1.0 - brightness;
+                finalAlpha = max(alphaThreshold, darkness);
+                // Escurece linhas pretas para melhor contraste
                 if (brightness < 0.5) {
-                  float darkness = 1.0 - brightness;
-                  finalAlpha = max(alphaThreshold, darkness);
-                  // Escurece linhas pretas para melhor contraste
                   finalColor = finalColor * 0.8;
-                } else {
-                  // Cores pintadas (claras mas não brancas) = totalmente opaco
-                  finalAlpha = 1.0;
                 }
               }
               
