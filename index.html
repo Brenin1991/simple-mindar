@@ -818,25 +818,25 @@
             depthWrite: false
           });
           
-          // Cria o plano da partícula
-          const particleGeometry = new THREE.PlaneGeometry(0.3, 0.3); // Tamanho menor que o plano principal
+          // Cria o plano da partícula (maior para mobile)
+          const particleSize = 0.5; // Tamanho maior para ser visível no mobile
+          const particleGeometry = new THREE.PlaneGeometry(particleSize, particleSize);
           const particleMesh = new THREE.Mesh(particleGeometry, particleMaterial);
           
-          // Posição aleatória em uma esfera ao redor da câmera
-          const radius = 2 + Math.random() * 3; // Entre 2 e 5 metros
-          const theta = Math.random() * Math.PI * 2; // Ângulo horizontal
-          const phi = Math.acos((Math.random() * 2) - 1); // Ângulo vertical
+          // Posição aleatória mais próxima da câmera (melhor para mobile)
+          // Posiciona em frente à câmera, não muito longe
+          const distance = 1.5 + Math.random() * 2; // Entre 1.5 e 3.5 metros (mais perto)
+          const angle = Math.random() * Math.PI * 2; // Ângulo horizontal
+          const verticalAngle = (Math.random() - 0.5) * Math.PI * 0.5; // Ângulo vertical limitado
           
+          // Posiciona em frente à câmera (eixo Z negativo no A-Frame)
           particleMesh.position.set(
-            radius * Math.sin(phi) * Math.cos(theta),
-            radius * Math.sin(phi) * Math.sin(theta),
-            radius * Math.cos(phi)
+            Math.cos(angle) * Math.cos(verticalAngle) * distance,
+            Math.sin(verticalAngle) * distance,
+            -Math.sin(angle) * Math.cos(verticalAngle) * distance - 2 // Mais perto da câmera
           );
           
-          // Adiciona offset aleatório
-          particleMesh.position.x += (Math.random() - 0.5) * 2;
-          particleMesh.position.y += (Math.random() - 0.5) * 2;
-          particleMesh.position.z += (Math.random() - 0.5) * 2;
+          console.log(`Partícula ${i} criada em:`, particleMesh.position);
           
           // Velocidade e offset para animação de flutuação
           const particle = {
@@ -848,12 +848,31 @@
             timeOffset: Math.random() * Math.PI * 2 // Offset de tempo para variar animação
           };
           
+          // Garante que a partícula está visível
+          particleMesh.visible = true;
+          particleMesh.renderOrder = 1000; // Garante que renderiza por cima
+          
           particles.push(particle);
           scene3D.add(particleMesh);
+          
+          // Verifica se foi adicionada corretamente
+          if (!scene3D.children.includes(particleMesh)) {
+            console.warn(`Partícula ${i} não foi adicionada à cena!`);
+          }
         }
         
         particlesCreated = true;
         console.log(`✅ ${PARTICLE_COUNT} partículas criadas!`);
+        console.log('Partículas adicionadas à cena:', scene3D.children.length);
+        
+        // Verifica se as partículas estão visíveis
+        particles.forEach((p, i) => {
+          console.log(`Partícula ${i}:`, {
+            visible: p.mesh.visible,
+            position: p.mesh.position,
+            material: !!p.mesh.material
+          });
+        });
         
         // Inicia animação das partículas
         animateParticles();
@@ -861,38 +880,56 @@
 
       // Anima as partículas flutuantes
       function animateParticles() {
-        if (particles.length === 0) return;
+        if (particles.length === 0) {
+          console.warn('Nenhuma partícula para animar');
+          return;
+        }
         
-        const camera = scene.camera;
-        let lastTime = Date.now();
+        console.log('Iniciando animação de partículas...');
+        let animationStarted = false;
         
-        // Usa o loop de render do A-Frame
-        function updateParticles() {
+        // Usa o componente tick do A-Frame para garantir que funcione
+        const updateParticles = () => {
           if (particles.length === 0) return;
           
-          const currentTime = Date.now();
-          const deltaTime = (currentTime - lastTime) * 0.001; // Delta em segundos
-          lastTime = currentTime;
-          const time = currentTime * 0.001; // Tempo total em segundos
+          const camera = scene.camera;
+          const time = Date.now() * 0.001; // Tempo em segundos
           
           particles.forEach((particle) => {
             const mesh = particle.mesh;
+            
+            if (!mesh || !mesh.visible) return;
             
             // Flutuação vertical
             mesh.position.y = particle.baseY + Math.sin(time * particle.floatSpeed + particle.timeOffset) * particle.floatAmount;
             
             // Rotação lenta
-            mesh.rotation.z += particle.rotationSpeed * deltaTime * 60;
+            mesh.rotation.z += particle.rotationSpeed * 0.016; // ~60fps
             
             // Sempre olha para a câmera (billboard)
-            if (camera && camera.position) {
-              mesh.lookAt(camera.position);
+            try {
+              if (camera) {
+                const cameraWorldPos = new THREE.Vector3();
+                camera.getWorldPosition(cameraWorldPos);
+                mesh.lookAt(cameraWorldPos);
+              } else {
+                // Fallback: olha para a origem
+                mesh.lookAt(new THREE.Vector3(0, 0, 0));
+              }
+            } catch (e) {
+              // Se falhar, apenas rotaciona para frente
+              mesh.rotation.y = 0;
             }
           });
-        }
+        };
         
-        // Registra no loop de render do A-Frame
+        // Registra no evento tick do A-Frame (mais confiável)
+        scene.addEventListener('tick', updateParticles);
+        
+        // Também tenta no render como fallback
         scene.addEventListener('render', updateParticles);
+        
+        console.log('Animação de partículas registrada');
       }
 
       // Atualiza a textura periodicamente para capturar o desenho pintado
