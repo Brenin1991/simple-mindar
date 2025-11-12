@@ -828,13 +828,8 @@
             dir: 'alternate'
           });
           
-          // Rotação suave (apenas em Z para não distorcer)
-          particleEl.setAttribute('animation__rotation', {
-            property: 'rotation',
-            to: `0 0 ${360}`,
-            dur: 5000 + Math.random() * 5000,
-            loop: true
-          });
+          // Rotação suave em Z será aplicada manualmente no loop para não conflitar
+          // Removida animação de rotação Z para evitar conflito com lookAt
           
           // Adiciona à cena
           scene.appendChild(particleEl);
@@ -907,17 +902,36 @@
           particles.forEach((particle) => {
             if (!particle.mesh || !particle.mesh.parent) return;
             
-            // Obtém a rotação Z atual da animação
-            const currentRotZ = particle.el.getAttribute('rotation').z || 0;
+            // Obtém a posição da partícula no mundo
+            const particleWorldPos = new THREE.Vector3();
+            particle.mesh.getWorldPosition(particleWorldPos);
             
-            // Usa lookAt do THREE.js para olhar para a câmera
-            particle.mesh.lookAt(cameraWorldPos);
+            // Calcula a direção para a câmera
+            const direction = new THREE.Vector3();
+            direction.subVectors(cameraWorldPos, particleWorldPos).normalize();
             
-            // Garante que a escala está sempre fixa (1, 1, 1) - evita esticamento
+            // Calcula a rotação necessária usando quaternion (mais preciso)
+            const quaternion = new THREE.Quaternion();
+            const up = new THREE.Vector3(0, 1, 0);
+            quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
+            
+            // Converte quaternion para Euler
+            const euler = new THREE.Euler();
+            euler.setFromQuaternion(quaternion);
+            
+            // Rotação Z suave (adiciona rotação contínua)
+            const time = Date.now() * 0.001;
+            const baseRotZ = (time * 20 + particle.baseY * 10) % 360; // Rotação baseada no tempo e posição
+            
+            // Aplica rotação na entidade A-Frame (não no mesh) para preservar UV
+            particle.el.setAttribute('rotation', {
+              x: THREE.MathUtils.radToDeg(euler.x),
+              y: THREE.MathUtils.radToDeg(euler.y),
+              z: baseRotZ // Rotação Z suave
+            });
+            
+            // Garante que a escala do mesh está sempre fixa (1, 1, 1) - evita esticamento
             particle.mesh.scale.set(1, 1, 1);
-            
-            // Preserva a rotação Z da animação
-            particle.mesh.rotation.z = currentRotZ;
           });
           
           particleUpdateLoop = requestAnimationFrame(updateParticles);
