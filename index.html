@@ -20,7 +20,7 @@
       color-space="sRGB" 
       renderer="colorManagement: true, physicallyCorrectLights" 
       vr-mode-ui="enabled: false" 
-      device-orientation-permission-ui="enabled: true"
+      device-orientation-permission-ui="enabled: false"
       id="ar-scene">
       <a-assets>
         <img id="card" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.png" />
@@ -29,7 +29,6 @@
       <a-camera position="0 0 0" look-controls="enabled: true; magicWindowTrackingEnabled: true"></a-camera>
       <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
         <a-plane id="drawing-plane" position="0 0 0" height="1" width="1" rotation="0 0 0" material="transparent: true; opacity: 0"></a-plane>
-        <a-gltf-model rotation="0 0 0 " position="0 0 0.1" scale="0.005 0.005 0.005" src="#avatarModel" animation="property: position; to: 0 0.1 0.1; dur: 1000; easing: easeInOutQuad; loop: true; dir: alternate">
       </a-entity>
     </a-scene>
 
@@ -52,7 +51,7 @@
       let particlesCreated = false; // Indica se as partículas já foram criadas
       let particles = []; // Array para armazenar as partículas
       const CAPTURE_UPDATE_INTERVAL = 5000; // Atualiza a textura a cada 5 segundos (aumentado de 2s)
-      const PARTICLE_COUNT = 20; // Número de partículas a criar
+      const PARTICLE_COUNT = 15; // Número de partículas a criar
 
       // Aguarda o carregamento da cena
       const scene = document.querySelector('#ar-scene');
@@ -555,96 +554,6 @@
         }
       }
 
-      // Remove bordas brancas e centraliza o conteúdo
-      function cropWhiteBorders(imageData) {
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = imageData.width || imageData.naturalWidth;
-        tempCanvas.height = imageData.height || imageData.naturalHeight;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(imageData, 0, 0);
-        
-        const imageDataObj = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-        const data = imageDataObj.data;
-        const width = tempCanvas.width;
-        const height = tempCanvas.height;
-        
-        // Threshold para considerar como branco (ajustável)
-        const whiteThreshold = 240; // Valores RGB acima disso são considerados brancos
-        
-        // Encontra os limites do conteúdo não-branco
-        let minX = width;
-        let minY = height;
-        let maxX = 0;
-        let maxY = 0;
-        
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const idx = (y * width + x) * 4;
-            const r = data[idx];
-            const g = data[idx + 1];
-            const b = data[idx + 2];
-            
-            // Verifica se não é branco (considera branco se todos os canais são altos)
-            const isWhite = r > whiteThreshold && g > whiteThreshold && b > whiteThreshold;
-            
-            if (!isWhite) {
-              // Encontrou pixel não-branco, atualiza os limites
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-            }
-          }
-        }
-        
-        // Adiciona uma margem pequena (5% em cada lado)
-        const margin = Math.max(width, height) * 0.05;
-        minX = Math.max(0, minX - margin);
-        minY = Math.max(0, minY - margin);
-        maxX = Math.min(width, maxX + margin);
-        maxY = Math.min(height, maxY + margin);
-        
-        const cropWidth = maxX - minX;
-        const cropHeight = maxY - minY;
-        
-        // Se não encontrou conteúdo, retorna a imagem original
-        if (cropWidth <= 0 || cropHeight <= 0 || minX >= width || minY >= height) {
-          console.log('Não foi possível detectar bordas, usando imagem original');
-          return imageData;
-        }
-        
-        // Cria novo canvas com o conteúdo cortado e centralizado
-        const croppedCanvas = document.createElement('canvas');
-        // Mantém o tamanho original para preservar proporções
-        croppedCanvas.width = width;
-        croppedCanvas.height = height;
-        const croppedCtx = croppedCanvas.getContext('2d');
-        
-        // Preenche com branco (será transparente no shader)
-        croppedCtx.fillStyle = 'white';
-        croppedCtx.fillRect(0, 0, width, height);
-        
-        // Calcula posição para centralizar o conteúdo cortado
-        const centerX = (width - cropWidth) / 2;
-        const centerY = (height - cropHeight) / 2;
-        
-        // Desenha o conteúdo cortado centralizado
-        croppedCtx.drawImage(
-          tempCanvas,
-          minX, minY, cropWidth, cropHeight,  // Área de origem (cortada)
-          centerX, centerY, cropWidth, cropHeight  // Área de destino (centralizada)
-        );
-        
-        console.log(`✅ Bordas brancas removidas e conteúdo centralizado:`, {
-          original: `${width}x${height}`,
-          content: `${cropWidth.toFixed(0)}x${cropHeight.toFixed(0)}`,
-          position: `(${minX.toFixed(0)}, ${minY.toFixed(0)})`,
-          centered: `(${centerX.toFixed(0)}, ${centerY.toFixed(0)})`
-        });
-        
-        return croppedCanvas;
-      }
-
       // Processa a imagem extraída do target
       function processExtractedImage(imageData) {
         if (!canvas || !ctx) {
@@ -653,18 +562,14 @@
         }
 
         try {
-          // Primeiro, remove bordas brancas e centraliza
-          const croppedImage = cropWhiteBorders(imageData);
-          
           // Ajusta o tamanho do canvas
-          const finalWidth = croppedImage.width || imageData.width;
-          const finalHeight = croppedImage.height || imageData.height;
-          
-          canvas.width = finalWidth;
-          canvas.height = finalHeight;
+          if (imageData.width && imageData.height) {
+            canvas.width = imageData.width;
+            canvas.height = imageData.height;
+          }
 
-          // Desenha a imagem processada no canvas
-          ctx.drawImage(croppedImage, 0, 0, canvas.width, canvas.height);
+          // Desenha a imagem no canvas
+          ctx.drawImage(imageData, 0, 0, canvas.width, canvas.height);
         } catch (error) {
           console.error('Erro ao desenhar imagem no canvas:', error);
           return null;
@@ -743,35 +648,6 @@
             }
           `
         };
-      }
-
-      // Centraliza o plano na tela (em frente à câmera)
-      function centerPlaneInScreen() {
-        const planeEl = drawingPlane;
-        const planeObject3D = planeEl.object3D;
-        const scene3D = scene.object3D;
-        
-        // Se o plano ainda não foi removido do target entity, remove agora
-        if (planeObject3D.parent !== scene3D) {
-          const targetEntity3D = targetEntity.object3D;
-          targetEntity3D.remove(planeObject3D);
-          scene3D.add(planeObject3D);
-        }
-        
-        // Posiciona o plano no centro da tela (em frente à câmera)
-        // A câmera está em (0, 0, 0), então posiciona em (0, 0, -2) para ficar em frente
-        planeObject3D.position.set(0, 0, -10);
-        planeObject3D.rotation.set(0, 0, 0); // Sem rotação, olhando para a câmera
-        planeObject3D.scale.set(1, 1, 1); // Mantém escala original
-        
-        // Atualiza a matriz
-        planeObject3D.updateMatrixWorld();
-        
-        // Garante que o plano está visível
-        planeEl.setAttribute('visible', true);
-        planeEl.setAttribute('material', 'opacity', 1);
-        
-        console.log('📌 Plano centralizado na tela em:', planeObject3D.position);
       }
 
       // Fixa o plano na posição atual (desconecta do tracking)
@@ -895,11 +771,8 @@
           
           // Cria partículas flutuantes após a textura ser criada
           if (!particlesCreated) {
-            createFloatingParticles(texture, material);
+            createFloatingParticles(texture);
           }
-          
-          // Posiciona o plano no centro da tela (em frente à câmera)
-          centerPlaneInScreen();
         };
         img.onerror = (error) => {
           console.error('Erro ao carregar imagem:', error);
@@ -907,103 +780,11 @@
         img.src = imageUrl;
       }
 
-      // Cria partículas flutuantes com a textura usando entidades A-Frame
-      function createFloatingParticles(texture, materialTemplate) {
+      // Cria partículas flutuantes com a textura
+      function createFloatingParticles(texture) {
         if (particlesCreated) return;
         
         console.log('✨ Criando partículas flutuantes...');
-        console.log('Textura recebida:', texture);
-        console.log('Textura image:', texture && texture.image ? `${texture.image.width}x${texture.image.height}` : 'N/A');
-        
-        // Garante que a textura está atualizada
-        if (texture && texture.image) {
-          texture.needsUpdate = true;
-          texture.flipY = true;
-        }
-        
-        // Converte a textura para data URL para usar em entidades A-Frame (apenas para visualização inicial)
-        const canvas = document.createElement('canvas');
-        canvas.width = texture.image.width || 512;
-        canvas.height = texture.image.height || 512;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(texture.image, 0, 0);
-        const textureDataUrl = canvas.toDataURL('image/png');
-        
-        // Adiciona a textura aos assets do A-Frame (para visualização inicial)
-        const assets = scene.querySelector('a-assets');
-        let textureImg = document.getElementById('particle-texture');
-        if (!textureImg) {
-          textureImg = document.createElement('img');
-          textureImg.id = 'particle-texture';
-          assets.appendChild(textureImg);
-        }
-        textureImg.src = textureDataUrl;
-        
-        // Aguarda o asset carregar
-        textureImg.onload = () => {
-          console.log('Textura carregada nos assets, criando partículas...');
-          
-          // Cria partículas como entidades A-Frame (mais confiável no mobile)
-          for (let i = 0; i < PARTICLE_COUNT; i++) {
-            // Posição aleatória mais espalhada e mais longe da câmera (melhor FPS)
-            const x = (Math.random() - 0.5) * 8; // -4 a 4 (mais espalhado horizontalmente)
-            const y = (Math.random() - 0.5) * 6; // -3 a 3 (mais espalhado verticalmente)
-            const z = -10; // -5 a -10 (mais longe da câmera para melhor FPS)
-            
-            // Cria entidade A-Frame
-            const particleEl = document.createElement('a-plane');
-            particleEl.setAttribute('id', `particle-${i}`);
-            particleEl.setAttribute('width', '0.5');
-            particleEl.setAttribute('height', '0.5');
-            particleEl.setAttribute('position', `${x} ${y} ${z}`);
-            particleEl.setAttribute('material', {
-              src: '#particle-texture',
-              transparent: true,
-              opacity: 1,
-              shader: 'flat' // Usa shader simples primeiro para testar
-            });
-            particleEl.setAttribute('look-at', '0 0 0'); // Olha para a câmera
-            particleEl.setAttribute('animation', {
-              property: 'position',
-              to: `${x} ${y + 0.5} ${z}`,
-              dur: 2000 + Math.random() * 2000,
-              easing: 'easeInOutSine',
-              loop: true,
-              dir: 'alternate'
-            });
-            
-            // Adiciona à cena
-            scene.appendChild(particleEl);
-            
-            // Armazena referência
-            particles.push({
-              el: particleEl,
-              baseY: y,
-              floatSpeed: 0.5 + Math.random() * 0.5
-            });
-            
-            console.log(`Partícula ${i} criada como entidade A-Frame em:`, x, y, z);
-          }
-          
-          particlesCreated = true;
-          console.log(`✅ ${PARTICLE_COUNT} partículas criadas como entidades A-Frame!`);
-          
-          // Aplica o shader customizado imediatamente e depois de um delay
-          // Isso garante que funcione mesmo se o A-Frame ainda estiver criando os meshes
-          applyShaderToParticles(texture);
-          setTimeout(() => {
-            applyShaderToParticles(texture);
-          }, 500);
-          setTimeout(() => {
-            applyShaderToParticles(texture);
-          }, 1500);
-        };
-      }
-
-      // Aplica o shader customizado às partículas
-      function applyShaderToParticles(texture) {
-        console.log('Aplicando shader customizado às partículas...');
-        console.log('Textura recebida:', texture);
         
         const shaderTemplate = createWhiteToAlphaShader();
         
@@ -1013,72 +794,88 @@
           texture.flipY = true;
         }
         
-        particles.forEach((particle, i) => {
-          const el = particle.el;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          // Posição aleatória espalhada ao redor da câmera
+          const angle = (i / PARTICLE_COUNT) * Math.PI * 2; // Distribui em círculo
+          const radius = 3 + Math.random() * 2; // Distância da câmera
+          const x = Math.cos(angle) * radius;
+          const y = (Math.random() - 0.5) * 4; // Altura variada
+          const z = -5 - Math.random() * 3; // Profundidade variada
           
-          // Aguarda o mesh ser criado pelo A-Frame
-          const applyShader = () => {
-            const mesh = el.getObject3D('mesh');
-            
-            if (!mesh) {
-              // Se o mesh ainda não existe, tenta novamente
-              setTimeout(applyShader, 100);
-              return;
-            }
-            
-            // Remove o material antigo se existir
-            if (mesh.material) {
-              if (mesh.material.map) {
-                mesh.material.map.dispose();
-              }
-              if (mesh.material.dispose) {
+          // Cria entidade A-Frame para a partícula
+          const particleEl = document.createElement('a-plane');
+          particleEl.setAttribute('id', `particle-${i}`);
+          particleEl.setAttribute('width', '0.4');
+          particleEl.setAttribute('height', '0.4');
+          particleEl.setAttribute('position', `${x} ${y} ${z}`);
+          particleEl.setAttribute('material', {
+            transparent: true,
+            opacity: 1
+          });
+          particleEl.setAttribute('look-at', '0 0 0'); // Olha para a câmera
+          
+          // Animação de flutuação
+          const floatHeight = 0.3 + Math.random() * 0.3;
+          const floatDuration = 2000 + Math.random() * 2000;
+          particleEl.setAttribute('animation', {
+            property: 'position',
+            to: `${x} ${y + floatHeight} ${z}`,
+            dur: floatDuration,
+            easing: 'easeInOutSine',
+            loop: true,
+            dir: 'alternate'
+          });
+          
+          // Rotação suave
+          particleEl.setAttribute('animation__rotation', {
+            property: 'rotation',
+            to: `0 0 ${360}`,
+            dur: 5000 + Math.random() * 5000,
+            loop: true
+          });
+          
+          // Adiciona à cena
+          scene.appendChild(particleEl);
+          
+          // Aguarda o mesh ser criado e aplica o shader
+          setTimeout(() => {
+            const mesh = particleEl.getObject3D('mesh');
+            if (mesh) {
+              // Cria material com shader usando a mesma textura
+              const particleMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                  tDiffuse: { value: texture },
+                  whiteThreshold: { value: shaderTemplate.uniforms.whiteThreshold.value },
+                  alphaThreshold: { value: shaderTemplate.uniforms.alphaThreshold.value },
+                  colorDiffThreshold: { value: shaderTemplate.uniforms.colorDiffThreshold.value }
+                },
+                vertexShader: shaderTemplate.vertexShader,
+                fragmentShader: shaderTemplate.fragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false
+              });
+              
+              if (mesh.material && mesh.material.dispose) {
                 mesh.material.dispose();
               }
+              
+              mesh.material = particleMaterial;
+              mesh.material.needsUpdate = true;
+              
+              console.log(`✅ Partícula ${i} criada com shader`);
             }
-            
-            // Cria o shader material com a textura correta
-            const particleMaterial = new THREE.ShaderMaterial({
-              uniforms: {
-                tDiffuse: { value: texture }, // Usa a mesma textura do plano principal
-                whiteThreshold: { value: shaderTemplate.uniforms.whiteThreshold.value },
-                alphaThreshold: { value: shaderTemplate.uniforms.alphaThreshold.value },
-                colorDiffThreshold: { value: shaderTemplate.uniforms.colorDiffThreshold.value }
-              },
-              vertexShader: shaderTemplate.vertexShader,
-              fragmentShader: shaderTemplate.fragmentShader,
-              transparent: true,
-              side: THREE.DoubleSide,
-              depthWrite: false
-            });
-            
-            // Aplica o material
-            mesh.material = particleMaterial;
-            mesh.material.needsUpdate = true;
-            
-            // Força atualização da textura
-            if (texture) {
-              texture.needsUpdate = true;
-            }
-            
-            console.log(`✅ Shader aplicado à partícula ${i}`, {
-              hasTexture: !!texture,
-              textureSize: texture && texture.image ? `${texture.image.width}x${texture.image.height}` : 'N/A'
-            });
-          };
+          }, 100 + i * 50); // Delay escalonado para melhor performance
           
-          // Tenta aplicar imediatamente
-          applyShader();
-          
-          // Também tenta após um pequeno delay para garantir
-          setTimeout(applyShader, 200);
-        });
-      }
-
-      // Anima as partículas flutuantes (agora usando animações do A-Frame)
-      function animateParticles() {
-        // As animações já estão configuradas nas entidades A-Frame
-        // O look-at também já está configurado
-        console.log('Partículas animadas via A-Frame');
+          particles.push({
+            el: particleEl,
+            baseY: y,
+            baseZ: z
+          });
+        }
+        
+        particlesCreated = true;
+        console.log(`✅ ${PARTICLE_COUNT} partículas flutuantes criadas!`);
       }
 
       // Atualiza a textura periodicamente para capturar o desenho pintado
