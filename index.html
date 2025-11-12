@@ -555,6 +555,96 @@
         }
       }
 
+      // Remove bordas brancas e centraliza o conteúdo
+      function cropWhiteBorders(imageData) {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = imageData.width || imageData.naturalWidth;
+        tempCanvas.height = imageData.height || imageData.naturalHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(imageData, 0, 0);
+        
+        const imageDataObj = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const data = imageDataObj.data;
+        const width = tempCanvas.width;
+        const height = tempCanvas.height;
+        
+        // Threshold para considerar como branco (ajustável)
+        const whiteThreshold = 240; // Valores RGB acima disso são considerados brancos
+        
+        // Encontra os limites do conteúdo não-branco
+        let minX = width;
+        let minY = height;
+        let maxX = 0;
+        let maxY = 0;
+        
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            
+            // Verifica se não é branco (considera branco se todos os canais são altos)
+            const isWhite = r > whiteThreshold && g > whiteThreshold && b > whiteThreshold;
+            
+            if (!isWhite) {
+              // Encontrou pixel não-branco, atualiza os limites
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        
+        // Adiciona uma margem pequena (5% em cada lado)
+        const margin = Math.max(width, height) * 0.05;
+        minX = Math.max(0, minX - margin);
+        minY = Math.max(0, minY - margin);
+        maxX = Math.min(width, maxX + margin);
+        maxY = Math.min(height, maxY + margin);
+        
+        const cropWidth = maxX - minX;
+        const cropHeight = maxY - minY;
+        
+        // Se não encontrou conteúdo, retorna a imagem original
+        if (cropWidth <= 0 || cropHeight <= 0 || minX >= width || minY >= height) {
+          console.log('Não foi possível detectar bordas, usando imagem original');
+          return imageData;
+        }
+        
+        // Cria novo canvas com o conteúdo cortado e centralizado
+        const croppedCanvas = document.createElement('canvas');
+        // Mantém o tamanho original para preservar proporções
+        croppedCanvas.width = width;
+        croppedCanvas.height = height;
+        const croppedCtx = croppedCanvas.getContext('2d');
+        
+        // Preenche com branco (será transparente no shader)
+        croppedCtx.fillStyle = 'white';
+        croppedCtx.fillRect(0, 0, width, height);
+        
+        // Calcula posição para centralizar o conteúdo cortado
+        const centerX = (width - cropWidth) / 2;
+        const centerY = (height - cropHeight) / 2;
+        
+        // Desenha o conteúdo cortado centralizado
+        croppedCtx.drawImage(
+          tempCanvas,
+          minX, minY, cropWidth, cropHeight,  // Área de origem (cortada)
+          centerX, centerY, cropWidth, cropHeight  // Área de destino (centralizada)
+        );
+        
+        console.log(`✅ Bordas brancas removidas e conteúdo centralizado:`, {
+          original: `${width}x${height}`,
+          content: `${cropWidth.toFixed(0)}x${cropHeight.toFixed(0)}`,
+          position: `(${minX.toFixed(0)}, ${minY.toFixed(0)})`,
+          centered: `(${centerX.toFixed(0)}, ${centerY.toFixed(0)})`
+        });
+        
+        return croppedCanvas;
+      }
+
       // Processa a imagem extraída do target
       function processExtractedImage(imageData) {
         if (!canvas || !ctx) {
@@ -563,14 +653,18 @@
         }
 
         try {
+          // Primeiro, remove bordas brancas e centraliza
+          const croppedImage = cropWhiteBorders(imageData);
+          
           // Ajusta o tamanho do canvas
-          if (imageData.width && imageData.height) {
-            canvas.width = imageData.width;
-            canvas.height = imageData.height;
-          }
+          const finalWidth = croppedImage.width || imageData.width;
+          const finalHeight = croppedImage.height || imageData.height;
+          
+          canvas.width = finalWidth;
+          canvas.height = finalHeight;
 
-          // Desenha a imagem no canvas
-          ctx.drawImage(imageData, 0, 0, canvas.width, canvas.height);
+          // Desenha a imagem processada no canvas
+          ctx.drawImage(croppedImage, 0, 0, canvas.width, canvas.height);
         } catch (error) {
           console.error('Erro ao desenhar imagem no canvas:', error);
           return null;
