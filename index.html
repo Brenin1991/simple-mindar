@@ -770,15 +770,71 @@
           textureCreated = true;
           console.log('✅ Textura com shader WebGL aplicada! (branco → alpha)');
           
-          // Cria partículas flutuantes após a textura ser criada
+          // TESTE: Cria um plano simples na frente da câmera
           if (!particlesCreated) {
-            createFloatingParticles(texture, material);
+            console.log('🔧 Criando plano de teste na frente da câmera...');
             
-            // Torna o plano principal invisível (remove do centro)
-            setTimeout(() => {
-              planeEl.setAttribute('visible', false);
-              console.log('📌 Plano principal removido do centro (apenas partículas visíveis)');
-            }, 500); // Aguarda um pouco para garantir que as partículas foram criadas
+            // Converte textura para data URL
+            const canvas = document.createElement('canvas');
+            canvas.width = texture.image.width || 512;
+            canvas.height = texture.image.height || 512;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(texture.image, 0, 0);
+            const textureDataUrl = canvas.toDataURL('image/png');
+            
+            // Adiciona aos assets
+            const assets = scene.querySelector('a-assets');
+            let testTextureImg = document.getElementById('test-texture');
+            if (!testTextureImg) {
+              testTextureImg = document.createElement('img');
+              testTextureImg.id = 'test-texture';
+              assets.appendChild(testTextureImg);
+            }
+            testTextureImg.src = textureDataUrl;
+            
+            testTextureImg.onload = () => {
+              // Cria plano simples na frente da câmera
+              const testPlane = document.createElement('a-plane');
+              testPlane.setAttribute('id', 'test-plane');
+              testPlane.setAttribute('width', '2');
+              testPlane.setAttribute('height', '2');
+              testPlane.setAttribute('position', '0 0 -3'); // 3 metros à frente
+              testPlane.setAttribute('material', {
+                src: '#test-texture',
+                transparent: true,
+                opacity: 1
+              });
+              testPlane.setAttribute('look-at', '0 0 0'); // Olha para câmera
+              
+              scene.appendChild(testPlane);
+              console.log('✅ Plano de teste criado na frente da câmera!');
+              
+              // Depois aplica o shader
+              setTimeout(() => {
+                const mesh = testPlane.getObject3D('mesh');
+                if (mesh) {
+                  const shaderTemplate = createWhiteToAlphaShader();
+                  const shaderMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                      tDiffuse: { value: texture },
+                      whiteThreshold: { value: shaderTemplate.uniforms.whiteThreshold.value },
+                      alphaThreshold: { value: shaderTemplate.uniforms.alphaThreshold.value },
+                      colorDiffThreshold: { value: shaderTemplate.uniforms.colorDiffThreshold.value }
+                    },
+                    vertexShader: shaderTemplate.vertexShader,
+                    fragmentShader: shaderTemplate.fragmentShader,
+                    transparent: true,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                  });
+                  mesh.material = shaderMaterial;
+                  mesh.material.needsUpdate = true;
+                  console.log('✅ Shader aplicado ao plano de teste!');
+                }
+              }, 500);
+            };
+            
+            particlesCreated = true; // Marca como criado para não repetir
           }
         };
         img.onerror = (error) => {
