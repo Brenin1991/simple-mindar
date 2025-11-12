@@ -409,49 +409,84 @@
           const videoWidth = videoFrame.videoWidth || videoFrame.width;
           const videoHeight = videoFrame.videoHeight || videoFrame.height;
           
-          console.log(`Extraindo região: ${videoWidth}x${videoHeight}`);
-          console.log('Cantos:', targetCorners2D);
+          console.log(`📐 Extraindo região: ${videoWidth}x${videoHeight}`);
+          console.log('Cantos recebidos:', targetCorners2D);
+          
+          // Valida os cantos
+          if (!targetCorners2D || targetCorners2D.length !== 4) {
+            console.error('❌ Número inválido de cantos:', targetCorners2D);
+            return null;
+          }
           
           // Cria um canvas temporário para o frame do vídeo
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = videoWidth;
           tempCanvas.height = videoHeight;
           const tempCtx = tempCanvas.getContext('2d');
-          tempCtx.drawImage(videoFrame, 0, 0);
+          tempCtx.drawImage(videoFrame, 0, 0, videoWidth, videoHeight);
           
           // Converte para OpenCV Mat
           const src = cv.imread(tempCanvas);
           
           // Ordena os pontos corretamente (superior esquerdo, superior direito, inferior direito, inferior esquerdo)
-          // Garante que os pontos estão na ordem correta
-          const orderedCorners = [...targetCorners2D];
+          // Calcula o centro dos pontos
+          const centerX = targetCorners2D.reduce((sum, p) => sum + p.x, 0) / 4;
+          const centerY = targetCorners2D.reduce((sum, p) => sum + p.y, 0) / 4;
+          
+          // Ordena os pontos: superior esquerdo, superior direito, inferior direito, inferior esquerdo
+          const orderedCorners = targetCorners2D.sort((a, b) => {
+            // Primeiro ordena por Y (superior primeiro)
+            if (Math.abs(a.y - b.y) > 10) {
+              return a.y - b.y;
+            }
+            // Depois ordena por X (esquerdo primeiro)
+            return a.x - b.x;
+          });
+          
+          // Reordena para garantir: [top-left, top-right, bottom-right, bottom-left]
+          const topPoints = orderedCorners.filter(p => p.y < centerY).sort((a, b) => a.x - b.x);
+          const bottomPoints = orderedCorners.filter(p => p.y >= centerY).sort((a, b) => a.x - b.x);
+          
+          const finalCorners = [
+            topPoints[0] || orderedCorners[0],    // top-left
+            topPoints[1] || orderedCorners[1],  // top-right
+            bottomPoints[1] || orderedCorners[2], // bottom-right
+            bottomPoints[0] || orderedCorners[3]  // bottom-left
+          ];
+          
+          console.log('Cantos ordenados:', finalCorners);
           
           // Define os pontos de origem (cantos do target na imagem)
           const srcPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
-            orderedCorners[0].x, orderedCorners[0].y,
-            orderedCorners[1].x, orderedCorners[1].y,
-            orderedCorners[2].x, orderedCorners[2].y,
-            orderedCorners[3].x, orderedCorners[3].y
+            finalCorners[0].x, finalCorners[0].y,
+            finalCorners[1].x, finalCorners[1].y,
+            finalCorners[2].x, finalCorners[2].y,
+            finalCorners[3].x, finalCorners[3].y
           ]);
           
-          // Define os pontos de destino (retângulo retificado)
-          const size = 512; // Tamanho da imagem extraída
+          // Define os pontos de destino (retângulo retificado - CROP EXATO)
+          const size = 512; // Tamanho da imagem extraída (cortada)
           const dstPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
-            0, 0,
-            size, 0,
-            size, size,
-            0, size
+            0, 0,           // top-left
+            size, 0,         // top-right
+            size, size,      // bottom-right
+            0, size          // bottom-left
           ]);
           
           // Calcula a matriz de transformação perspectiva
           const M = cv.getPerspectiveTransform(srcPoints, dstPoints);
           
-          // Aplica a transformação
-          const dst = new cv.Mat();
-          cv.warpPerspective(src, dst, M, new cv.Size(size, size));
+          // Cria canvas dedicado para a imagem extraída (CROP)
+          const cropCanvas = document.createElement('canvas');
+          cropCanvas.width = size;
+          cropCanvas.height = size;
           
-          // Converte de volta para canvas
-          cv.imshow(canvas, dst);
+          // Aplica a transformação perspectiva (CORTE)
+          const dst = new cv.Mat();
+          cv.warpPerspective(src, dst, M, new cv.Size(size, size), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
+          
+          // Converte de volta para canvas (IMAGEM CORTADA)
+          cv.imshow(cropCanvas, dst);
           
           // Limpa memória
           src.delete();
@@ -459,11 +494,12 @@
           srcPoints.delete();
           dstPoints.delete();
           M.delete();
+          tempCanvas.remove();
           
-          console.log('✅ Região extraída com sucesso!');
-          return canvas.toDataURL('image/png');
+          console.log('✅ Região CORTADA com sucesso! Tamanho:', size + 'x' + size);
+          return cropCanvas.toDataURL('image/png');
         } catch (error) {
-          console.error('❌ Erro ao extrair região do target:', error);
+          console.error('❌ Erro ao extrair/cortar região do target:', error);
           return null;
         }
       }
@@ -609,8 +645,8 @@
             varying vec2 vUv;
             
             void main() {
-              // Ajusta UV para mover textura para cima (subtrai do Y porque Y=0 é embaixo)
-              vec2 adjustedUv = vec2(vUv.x, clamp(vUv.y - 0.1, 0.0, 1.0));
+              // Ajusta UV para mover textura para cima (adiciona ao Y)
+              vec2 adjustedUv = vec2(vUv.x, clamp(vUv.y + 0.1, 0.0, 1.0));
               vec4 texColor = texture2D(tDiffuse, adjustedUv);
               
               // Calcula o brilho do pixel
@@ -731,7 +767,7 @@
           // Cria textura a partir da imagem
           const texture = new THREE.Texture(img);
           texture.flipY = true; // Corrige a inversão vertical
-          texture.offset.y = -0.1; // Move a textura para cima no mapeamento UV (negativo move para cima)
+          texture.offset.y = 0.1; // Move a textura para cima no mapeamento UV
           texture.needsUpdate = true;
           
           // Verifica se a textura está pronta
